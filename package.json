@@ -1,14 +1,11 @@
 {
-    "name": "instagram-bot",
+    "name": "instagram-userbot",
     "version": "1.0.0",
-    "description": "Instagram following bot",
     "main": "index.js",
+    "dependencies": {
+      "puppeteer-core": "^22.0.0"
+    },
     "scripts": {
       "start": "node index.js"
-    },
-    "dependencies": {
-      "puppeteer": "^19.7.0",
-      "puppeteer-extra": "^3.3.6",
-      "puppeteer-extra-plugin-stealth": "^2.11.2"
     }
   }
