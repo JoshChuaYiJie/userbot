@@ -130,7 +130,7 @@ async function startBrowserSession() {
   try {
     console.log('Starting Browserless session...');
     const token = 'ty9M67Qb7jT4OJ0RVMqXwTdGubGsDQ8d';
-    const endpoint = 'ws://browserless-qg8wskkgckssk0c4w0gcgocw:3000?token=' + token;
+    const endpoint = 'ws://10.0.3.2:3000?token=' + token;
     console.log('Connecting to:', endpoint);
     const browser = await puppeteer.connect({ browserWSEndpoint: endpoint });
     console.log('Connected to Browserless!');
