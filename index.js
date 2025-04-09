@@ -127,10 +127,17 @@ async function humanLikeScroll(page) {
 
 // Function to start a new browser session
 async function startBrowserSession() {
-    // Connect to browserless service instead of launching a local browser
-    const browser = await puppeteerExtra.connect({ 
-      browserWSEndpoint: `ws://localhost:3000?token=${process.env.BROWSERLESS_TOKEN || 'ty9M67Qb7jT4OJ0RVMqXwTdGubGsDQ8d'}`
-});
+  console.log('Starting Browserless session...');
+  const token = 'ty9M67Qb7jT4OJ0RVMqXwTdGubGsDQ8d';
+  const endpoint = 'ws://localhost:3000?token=' + token; // No template literal, no extra /
+  console.log('Connecting to Browserless at:', endpoint);
+
+  console.time('BrowserlessConnection');
+  browser = await puppeteer.connect({ 
+    browserWSEndpoint: endpoint
+  });
+  console.timeEnd('BrowserlessConnection');
+  console.log('Successfully connected to Browserless!');
     
     // Create a new page
     const page = await browser.newPage();
