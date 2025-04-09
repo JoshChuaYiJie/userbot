@@ -127,33 +127,21 @@ async function humanLikeScroll(page) {
 
 // Function to start a new browser session
 async function startBrowserSession() {
-  console.log('Starting Browserless session...');
-  const token = 'ty9M67Qb7jT4OJ0RVMqXwTdGubGsDQ8d';
-  const endpoint = 'ws://localhost:3000?token=' + token; // No template literal, no extra /
-  console.log('Connecting to Browserless at:', endpoint);
-
-  console.time('BrowserlessConnection');
-  browser = await puppeteer.connect({ 
-    browserWSEndpoint: endpoint
-  });
-  console.timeEnd('BrowserlessConnection');
-  console.log('Successfully connected to Browserless!');
-    
-    // Create a new page
+  try {
+    console.log('Starting Browserless session...');
+    const token = 'ty9M67Qb7jT4OJ0RVMqXwTdGubGsDQ8d';
+    const endpoint = 'ws://localhost:3000?token=' + token;
+    console.log('Connecting to:', endpoint);
+    const browser = await puppeteer.connect({ browserWSEndpoint: endpoint });
+    console.log('Connected to Browserless!');
     const page = await browser.newPage();
-    
-    // Set viewport to a common resolution
+    console.log('Page created');
     await page.setViewport({ width: 1280, height: 800 });
-  
-    // Set various user agent and browser fingerprinting protections
+    console.log('Viewport set');
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36');
-    
-    // Set webGL and other browser-specific features to appear more like a real browser
-    await page.evaluateOnNewDocument(() => {
-      // Your existing fingerprinting protections...
-    });
-    
-    // Set the session cookie to log in
+    console.log('User agent set');
+    await page.evaluateOnNewDocument(() => {});
+    console.log('Fingerprinting applied');
     await page.setCookie({
       name: 'sessionid',
       value: '6437903867%3AdHyky5yQ1iPSon%3A28%3AAYeilioihR_NN8hwlaXiZsjqKm9XaEt_PwLx0ZGjlA',
@@ -164,9 +152,14 @@ async function startBrowserSession() {
       sameSite: 'Lax',
       expires: -1
     });
-    
+    console.log('Cookie set');
     return { browser, page };
+  } catch (error) {
+    console.error('Error:', error.message);
+    console.error('Full error:', error);
+    throw error;
   }
+}
 
 // Function to follow accounts in a single batch
 async function followAccountsBatch(page, startIndex, maxBatchSize) {
