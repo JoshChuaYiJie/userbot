@@ -8,6 +8,6 @@
         "puppeteer-extra-plugin-stealth": "^2.11.2"
     },
     "scripts": {
-        "start": "node index.js"
+        "start": "node workmanual4.js"
     }
 }
