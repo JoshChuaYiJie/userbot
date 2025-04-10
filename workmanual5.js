@@ -9,7 +9,7 @@ puppeteerExtra.use(puppeteerExtraStealthPlugin());
 
 // File paths configuration
 const accountsFilePath = path.join(__dirname, 'accounts_to_follow.txt');
-const followedFilePath = path.join(__dirname, 'followed.txt');
+const followedFilePath = '/app/followed.txt'; // Persistent volume path in container
 
 // Track followed accounts
 let followedAccounts = [];
@@ -18,8 +18,7 @@ let accountsToProcess = [];
 // Helper function to get current hour in Singapore time
 function getSingaporeHour() {
   const options = { timeZone: 'Asia/Singapore', hour: 'numeric', hour12: false };
-  const hour = new Date().toLocaleString('en-US', options);
-  return parseInt(hour, 10);
+  return parseInt(new Date().toLocaleString('en-US', options), 10);
 }
 
 // Read accounts from file
@@ -31,16 +30,12 @@ function readAccountsFromFile(filePath) {
     }
     const ext = path.extname(filePath).toLowerCase();
     const content = fs.readFileSync(filePath, 'utf8');
-    
-    if (ext === '.csv') {
-      return content.split(/[\r\n,]+/).filter(username => username.trim().length > 0);
-    } else if (ext === '.txt') {
-      return content.split(/[\r\n]+/).filter(username => username.trim().length > 0);
-    } else if (ext === '.json') {
+    if (ext === '.csv') return content.split(/[\r\n,]+/).filter(username => username.trim().length > 0);
+    else if (ext === '.txt') return content.split(/[\r\n]+/).filter(username => username.trim().length > 0);
+    else if (ext === '.json') {
       const data = JSON.parse(content);
-      if (Array.isArray(data)) {
-        return data.map(item => typeof item === 'string' ? item : item.username || item.user || '').filter(Boolean);
-      } else if (data.accounts || data.usernames || data.users) {
+      if (Array.isArray(data)) return data.map(item => typeof item === 'string' ? item : item.username || item.user || '').filter(Boolean);
+      else if (data.accounts || data.usernames || data.users) {
         const accounts = data.accounts || data.usernames || data.users;
         return Array.isArray(accounts) ? accounts : [];
       }
@@ -52,24 +47,36 @@ function readAccountsFromFile(filePath) {
   }
 }
 
-// Load previously followed accounts
+// Load previously followed accounts from persistent file
 function loadFollowedAccounts() {
-  if (fs.existsSync(followedFilePath)) {
-    followedAccounts = fs.readFileSync(followedFilePath, 'utf8')
-      .split('\n')
-      .filter(line => line.trim().length > 0)
-      .map(line => line.split(',')[0]);
-    console.log(`Loaded ${followedAccounts.length} previously followed accounts`);
+  try {
+    if (fs.existsSync(followedFilePath)) {
+      followedAccounts = fs.readFileSync(followedFilePath, 'utf8')
+        .split('\n')
+        .filter(line => line.trim().length > 0)
+        .map(line => line.split(',')[0]);
+      console.log(`Loaded ${followedAccounts.length} previously followed accounts from ${followedFilePath}`);
+    } else {
+      console.log(`No existing followed.txt found at ${followedFilePath}, starting fresh`);
+      fs.writeFileSync(followedFilePath, ''); // Create empty file if it doesn’t exist
+    }
+  } catch (error) {
+    console.error(`Error loading followed accounts: ${error.message}`);
+    fs.writeFileSync(followedFilePath, ''); // Ensure file exists even on error
   }
 }
 
-// Save followed account to file
+// Save followed account to persistent file
 function saveFollowedAccount(username) {
   if (!followedAccounts.includes(username)) {
     followedAccounts.push(username);
     const timestamp = new Date().toLocaleString('en-US', { timeZone: 'Asia/Singapore' });
-    fs.appendFileSync(followedFilePath, `${username},${timestamp}\n`);
-    console.log(`Saved ${username} to followed accounts file`);
+    try {
+      fs.appendFileSync(followedFilePath, `${username},${timestamp}\n`);
+      console.log(`Saved ${username} to ${followedFilePath}`);
+    } catch (error) {
+      console.error(`Error saving ${username} to ${followedFilePath}: ${error.message}`);
+    }
   }
 }
 
@@ -85,7 +92,6 @@ async function humanLikeScroll(page) {
     const viewportHeight = window.innerHeight;
     let currentPosition = 0;
     const scrollActions = Math.floor(Math.random() * 4) + 2;
-    
     for (let i = 0; i < scrollActions; i++) {
       const scrollDistance = Math.floor(Math.random() * (viewportHeight * 0.8)) + (viewportHeight * 0.3);
       currentPosition += scrollDistance;
