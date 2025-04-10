@@ -9,6 +9,6 @@
         "puppeteer-extra-plugin-stealth": "^2.11.2"
     },
     "scripts": {
-        "start": "node workmanual4.js"
+        "start": "node workmanual5.js"
     }
 }
