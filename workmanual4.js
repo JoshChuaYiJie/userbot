@@ -180,11 +180,11 @@ async function startBrowserSession() {
       },
     });
   });
-  
+  //old cookie: '6437903867%3AdHyky5yQ1iPSon%3A28%3AAYeilioihR_NN8hwlaXiZsjqKm9XaEt_PwLx0ZGjlA'
   // Set the session cookie to log in
   await page.setCookie({
     name: 'sessionid',
-    value: '6437903867%3AdHyky5yQ1iPSon%3A28%3AAYeilioihR_NN8hwlaXiZsjqKm9XaEt_PwLx0ZGjlA',
+    value: 'dtVYgdvn0vdAUAcm1738392817',
     domain: '.instagram.com',
     path: '/',
     secure: true,
