@@ -128,7 +128,7 @@ async function startBrowserSession() {
   });
   await page.setCookie({
     name: 'sessionid',
-    value: 'dtVYgdvn0vdAUAcm1738392817',
+    value: '72188432551%3AzfduWfv6Vyk6so%3A29%3AAYe8VzUCjUiK3qByAI91sz9Lgc-SGFhOzDFHXk1qHw',
     domain: '.instagram.com',
     path: '/',
     secure: true,
