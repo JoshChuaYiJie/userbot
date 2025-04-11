@@ -9,13 +9,13 @@ puppeteerExtra.use(puppeteerExtraStealthPlugin());
 
 // File paths configuration
 const accountsFilePath = path.join(__dirname, 'accounts_to_follow.txt');
-const followedFilePath = '/app/followed.txt'; // Persistent volume path in container
-const sessionFilePath = '/app/session.txt'; // Persistent sessionid storage
+const followedFilePath = '/app/followed.txt';
+const sessionFilePath = '/app/session.txt';
 
 // Track followed accounts and session
 let followedAccounts = [];
 let accountsToProcess = [];
-let currentSessionId = '72188432551%3AzfduWfv6Vyk6so%3A29%3AAYfYCL_ms5lZMVTrAXiSqtFmpNxcinRd-eTtWmKkjA'; // Fallback hardcoded sessionid
+let currentSessionId = '72188432551%3AzfduWfv6Vyk6so%3A29%3AAYfYCL_ms5lZMVTrAXiSqtFmpNxcinRd-eTtWmKkjA'; // Fallback
 
 // Helper function to get current hour in Singapore time
 function getSingaporeHour() {
@@ -204,13 +204,11 @@ async function loginToInstagram(browser) {
   console.log('Navigating to Instagram login page...');
   await page.goto('https://www.instagram.com/accounts/login/', { waitUntil: 'networkidle2', timeout: 30000 });
 
-  // Use aria-label selectors from your input
   await page.waitForSelector('input[aria-label="Phone number, username, or email"]', { timeout: 10000 });
   await page.type('input[aria-label="Phone number, username, or email"]', process.env.INSTAGRAM_USERNAME, { delay: getRandomWaitTime(50, 150) });
   await page.type('input[aria-label="Password"]', process.env.INSTAGRAM_PASSWORD, { delay: getRandomWaitTime(50, 150) });
   
   console.log('Submitting login form...');
-  // Assuming the button is inside or is the div with class x9f619
   await page.waitForSelector('div.x9f619', { timeout: 10000 });
   await page.evaluate(() => {
     const loginDiv = document.querySelector('div.x9f619');
@@ -226,9 +224,34 @@ async function loginToInstagram(browser) {
     throw new Error('Login failed, no sessionid found. Check credentials or 2FA.');
   }
   console.log(`New sessionid obtained: ${sessionCookie.value}`);
-  saveSessionId(sessionCookie.value); // Save to file
+  saveSessionId(sessionCookie.value);
   await page.close();
   return sessionCookie.value;
+}
+
+// Check login status and handle session
+async function ensureLoggedIn(browser) {
+  let page = await createPage(browser, currentSessionId);
+  try {
+    await page.goto('https://www.instagram.com/', { waitUntil: 'networkidle2', timeout: 30000 });
+    const isLoggedIn = await page.evaluate(() => !!document.querySelector('a[href*="/accounts/"]'));
+    if (!isLoggedIn) {
+      console.log('Sessionid expired, attempting manual login...');
+      await page.close();
+      currentSessionId = await loginToInstagram(browser);
+      page = await createPage(browser, currentSessionId);
+      await page.goto('https://www.instagram.com/', { waitUntil: 'networkidle2', timeout: 30000 });
+      const recheckLogin = await page.evaluate(() => !!document.querySelector('a[href*="/accounts/"]'));
+      if (!recheckLogin) {
+        throw new Error('Manual login failed. Check credentials or 2FA.');
+      }
+    }
+    console.log('Logged in successfully');
+    return page;
+  } catch (error) {
+    if (page) await page.close();
+    throw error;
+  }
 }
 
 // Follow accounts in a batch
@@ -291,7 +314,7 @@ async function followAccountsBatch(page, startIndex, maxBatchSize) {
 
 // Main bot function
 async function runBot() {
-  loadSessionId(); // Load sessionid from file if exists
+  loadSessionId();
   loadFollowedAccounts();
   const accountsToFollow = readAccountsFromFile(accountsFilePath);
   accountsToProcess = accountsToFollow.filter(account => !followedAccounts.includes(account));
@@ -304,6 +327,7 @@ async function runBot() {
 
   const browser = await startBrowser();
   try {
+    let page = await ensureLoggedIn(browser); // Ensure login at start
     while (processedCount < accountsToProcess.length) {
       const hour = getSingaporeHour();
       if (hour >= 2 && hour < 5) {
@@ -312,27 +336,9 @@ async function runBot() {
         continue;
       }
       console.log(`Starting batch at index ${processedCount} (${new Date().toLocaleString('en-US', { timeZone: 'Asia/Singapore' })})`);
-      let page = await createPage(browser, currentSessionId);
       try {
-        await page.goto('https://www.instagram.com/', { waitUntil: 'networkidle2', timeout: 30000 });
-        const isLoggedIn = await page.evaluate(() => !!document.querySelector('a[href*="/accounts/"]'));
-        if (!isLoggedIn) {
-          console.log('Sessionid expired, attempting manual login...');
-          await page.close();
-          currentSessionId = await loginToInstagram(browser);
-          page = await createPage(browser, currentSessionId);
-          await page.goto('https://www.instagram.com/', { waitUntil: 'networkidle2', timeout: 30000 });
-          const recheckLogin = await page.evaluate(() => !!document.querySelector('a[href*="/accounts/"]'));
-          if (!recheckLogin) {
-            console.error('Manual login failed. Check credentials or 2FA.');
-            await page.close();
-            break;
-          }
-        }
-        console.log('Logged in successfully');
         const followedCount = await followAccountsBatch(page, processedCount, 20);
         processedCount += followedCount;
-        await page.close();
         if (processedCount % 50 === 0) {
           const updatedAccounts = readAccountsFromFile(accountsFilePath);
           const updatedToProcess = updatedAccounts.filter(account => !followedAccounts.includes(account));
@@ -351,14 +357,18 @@ async function runBot() {
           else if (hour >= 11 && hour <= 20) baseWaitMinutes = 50;
           const waitTimeMinutes = baseWaitMinutes + getRandomWaitTime(-10, 10);
           console.log(`Waiting ~${waitTimeMinutes} minutes before next batch`);
+          await page.close();
+          page = await createPage(browser, currentSessionId); // Reuse sessionid
           await new Promise(resolve => setTimeout(resolve, waitTimeMinutes * 60 * 1000));
         }
       } catch (error) {
-        console.error('Session error:', error.message);
-        console.log('Retrying with new page...');
-        if (page) await page.close();
+        console.error('Batch error:', error.message);
+        console.log('Re-establishing session...');
+        await page.close();
+        page = await ensureLoggedIn(browser); // Re-login if session fails
       }
     }
+    await page.close();
   } finally {
     await browser.close();
     console.log('Browser closed, finished following all accounts.');
