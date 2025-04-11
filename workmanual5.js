@@ -66,14 +66,14 @@ function loadFollowedAccounts() {
   }
 }
 
-// Save followed account
-function saveFollowedAccount(username) {
+// Save followed or invalid account
+function saveFollowedAccount(username, isInvalid = false) {
   if (!followedAccounts.includes(username)) {
     followedAccounts.push(username);
     const timestamp = new Date().toLocaleString('en-US', { timeZone: 'Asia/Singapore' });
     try {
-      fs.appendFileSync(followedFilePath, `${username},${timestamp}\n`);
-      console.log(`Saved ${username} to ${followedFilePath}`);
+      fs.appendFileSync(followedFilePath, `${username},${timestamp}${isInvalid ? ',invalid' : ''}\n`);
+      console.log(`${isInvalid ? 'Marked as invalid' : 'Saved'} ${username} to ${followedFilePath}`);
     } catch (error) {
       console.error(`Error saving ${username} to ${followedFilePath}: ${error.message}`);
     }
@@ -174,12 +174,25 @@ async function followAccountsBatch(page, startIndex, maxBatchSize) {
       console.log(`Visiting profile: ${username}`);
       await page.goto(`https://www.instagram.com/${username}/`, { waitUntil: 'networkidle2', timeout: 30000 });
       await new Promise(resolve => setTimeout(resolve, getRandomWaitTime(2000, 5000)));
+
+      // Check if the account exists
+      const isInvalid = await page.evaluate(() => {
+        return !!document.querySelector('h2') && document.querySelector('h2').textContent.includes("This Account Doesn't Exist");
+      });
+      if (isInvalid) {
+        console.log(`Account ${username} does not exist`);
+        saveFollowedAccount(username, true); // Mark as invalid
+        continue;
+      }
+
       try {
         await page.waitForSelector('header', { timeout: 10000 });
       } catch (error) {
-        console.log(`Profile page for ${username} did not load: ${error.message}`);
+        console.log(`Profile page for ${username} did not load properly: ${error.message}`);
+        saveFollowedAccount(username, true); // Treat as invalid if header fails
         continue;
       }
+
       if (Math.random() > 0.3) {
         console.log(`Browsing ${username}'s profile...`);
         await humanLikeScroll(page);
@@ -200,7 +213,7 @@ async function followAccountsBatch(page, startIndex, maxBatchSize) {
       if (followResult.success) {
         console.log(`Followed ${username} (#${followedCount + 1})`);
         followedCount++;
-        saveFollowedAccount(username);
+        saveFollowedAccount(username); // Normal follow
         await new Promise(resolve => setTimeout(resolve, getRandomWaitTime(1500, 3500)));
         if (Math.random() > 0.5) await humanLikeScroll(page);
       } else {
@@ -208,7 +221,7 @@ async function followAccountsBatch(page, startIndex, maxBatchSize) {
       }
       await new Promise(resolve => setTimeout(resolve, getRandomWaitTime(3000, 8000)));
     } catch (error) {
-      console.error(`Failed to follow ${username}: ${error.message}`);
+      console.error(`Failed to process ${username}: ${error.message}`);
       await new Promise(resolve => setTimeout(resolve, getRandomWaitTime(2000, 4000)));
     }
   }
