@@ -112,7 +112,7 @@ async function humanLikeScroll(page) {
 async function startBrowser() {
   console.log('Starting browser...');
   const browser = await puppeteerExtra.launch({ 
-    headless: false, 
+    headless: true, 
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
