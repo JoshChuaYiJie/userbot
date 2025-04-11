@@ -4,7 +4,6 @@ const path = require('path');
 const puppeteerExtraStealthPlugin = require('puppeteer-extra-plugin-stealth');
 const puppeteerExtra = require('puppeteer-extra');
 
-// Add the stealth plugin to puppeteer
 puppeteerExtra.use(puppeteerExtraStealthPlugin());
 
 // File paths configuration
@@ -58,11 +57,11 @@ function loadFollowedAccounts() {
       console.log(`Loaded ${followedAccounts.length} previously followed accounts from ${followedFilePath}`);
     } else {
       console.log(`No existing followed.txt found at ${followedFilePath}, starting fresh`);
-      fs.writeFileSync(followedFilePath, ''); // Create empty file if it doesn’t exist
+      fs.writeFileSync(followedFilePath, '');
     }
   } catch (error) {
     console.error(`Error loading followed accounts: ${error.message}`);
-    fs.writeFileSync(followedFilePath, ''); // Ensure file exists even on error
+    fs.writeFileSync(followedFilePath, '');
   }
 }
 
@@ -108,15 +107,31 @@ async function humanLikeScroll(page) {
   });
 }
 
-// Start browser session
-async function startBrowserSession() {
+// Start browser instance (single instance for the entire run)
+async function startBrowser() {
   const browser = await puppeteerExtra.launch({ 
     headless: true, 
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--window-size=1920,1080']
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-zygote', // Reduce thread usage
+      '--disable-crash-reporter', // Avoid posix_spawn issues
+      '--single-process', // Minimize resource footprint
+      '--window-size=1920,1080'
+    ],
+    // Increase timeout and handle resource limits
+    timeout: 60000
   });
+  return browser;
+}
+
+// Create a new page with session
+async function createPage(browser) {
   const page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 800 });
-  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36');
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36');
   await page.evaluateOnNewDocument(() => {
     Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
     Object.defineProperty(navigator, 'plugins', { 
@@ -136,7 +151,7 @@ async function startBrowserSession() {
     sameSite: 'Lax',
     expires: -1
   });
-  return { browser, page };
+  return page;
 }
 
 // Follow accounts in a batch
@@ -208,55 +223,62 @@ async function runBot() {
   }
   console.log(`Loaded ${accountsToFollow.length} accounts, ${accountsToProcess.length} new to follow`);
   let processedCount = 0;
-  while (processedCount < accountsToProcess.length) {
-    const hour = getSingaporeHour();
-    if (hour >= 2 && hour < 5) {
-      console.log("Sleeping during night hours (2am-5am SGT)");
-      await new Promise(resolve => setTimeout(resolve, getRandomWaitTime(20, 40) * 60 * 1000));
-      continue;
-    }
-    console.log(`Starting batch at index ${processedCount} (${new Date().toLocaleString('en-US', { timeZone: 'Asia/Singapore' })})`);
-    try {
-      const { browser, page } = await startBrowserSession();
-      await page.goto('https://www.instagram.com/', { waitUntil: 'networkidle2' });
-      const isLoggedIn = await page.evaluate(() => !!document.querySelector('a[href*="/accounts/"]'));
-      if (!isLoggedIn) {
-        console.error('Session cookie invalid. Update sessionid.');
-        await browser.close();
-        return;
+
+  const browser = await startBrowser();
+  try {
+    while (processedCount < accountsToProcess.length) {
+      const hour = getSingaporeHour();
+      if (hour >= 2 && hour < 5) {
+        console.log("Sleeping during night hours (2am-5am SGT)");
+        await new Promise(resolve => setTimeout(resolve, getRandomWaitTime(20, 40) * 60 * 1000));
+        continue;
       }
-      console.log('Logged in successfully');
-      const followedCount = await followAccountsBatch(page, processedCount, 20);
-      processedCount += followedCount;
-      console.log('Closing browser session');
-      await browser.close();
-      if (processedCount % 50 === 0) {
-        const updatedAccounts = readAccountsFromFile(accountsFilePath);
-        const updatedToProcess = updatedAccounts.filter(account => !followedAccounts.includes(account));
-        if (updatedToProcess.length > accountsToProcess.length - processedCount) {
-          console.log("Found new accounts, updating list");
-          const remainingOld = accountsToProcess.slice(processedCount);
-          const newAccounts = updatedToProcess.filter(account => !remainingOld.includes(account));
-          accountsToProcess.length = processedCount;
-          accountsToProcess.push(...remainingOld, ...newAccounts);
-          console.log(`Updated list: ${accountsToProcess.length - processedCount} to process`);
+      console.log(`Starting batch at index ${processedCount} (${new Date().toLocaleString('en-US', { timeZone: 'Asia/Singapore' })})`);
+      let page;
+      try {
+        page = await createPage(browser);
+        await page.goto('https://www.instagram.com/', { waitUntil: 'networkidle2', timeout: 30000 });
+        const isLoggedIn = await page.evaluate(() => !!document.querySelector('a[href*="/accounts/"]'));
+        if (!isLoggedIn) {
+          console.error('Session cookie invalid. Update sessionid.');
+          await page.close();
+          break; // Exit loop instead of returning to allow browser cleanup
         }
+        console.log('Logged in successfully');
+        const followedCount = await followAccountsBatch(page, processedCount, 20);
+        processedCount += followedCount;
+        await page.close();
+        if (processedCount % 50 === 0) {
+          const updatedAccounts = readAccountsFromFile(accountsFilePath);
+          const updatedToProcess = updatedAccounts.filter(account => !followedAccounts.includes(account));
+          if (updatedToProcess.length > accountsToProcess.length - processedCount) {
+            console.log("Found new accounts, updating list");
+            const remainingOld = accountsToProcess.slice(processedCount);
+            const newAccounts = updatedToProcess.filter(account => !remainingOld.includes(account));
+            accountsToProcess.length = processedCount;
+            accountsToProcess.push(...remainingOld, ...newAccounts);
+            console.log(`Updated list: ${accountsToProcess.length - processedCount} to process`);
+          }
+        }
+        if (processedCount < accountsToProcess.length) {
+          let baseWaitMinutes = 60;
+          if (hour >= 22 || hour < 6) baseWaitMinutes = 90;
+          else if (hour >= 11 && hour <= 20) baseWaitMinutes = 50;
+          const waitTimeMinutes = baseWaitMinutes + getRandomWaitTime(-10, 10);
+          console.log(`Waiting ~${waitTimeMinutes} minutes before next batch`);
+          await new Promise(resolve => setTimeout(resolve, waitTimeMinutes * 60 * 1000));
+        }
+      } catch (error) {
+        console.error('Session error:', error.message);
+        console.log('Waiting 15 minutes before retry...');
+        if (page) await page.close();
+        await new Promise(resolve => setTimeout(resolve, 15 * 60 * 1000));
       }
-      if (processedCount < accountsToProcess.length) {
-        let baseWaitMinutes = 60;
-        if (hour >= 22 || hour < 6) baseWaitMinutes = 90;
-        else if (hour >= 11 && hour <= 20) baseWaitMinutes = 50;
-        const waitTimeMinutes = baseWaitMinutes + getRandomWaitTime(-10, 10);
-        console.log(`Waiting ~${waitTimeMinutes} minutes before next batch`);
-        await new Promise(resolve => setTimeout(resolve, waitTimeMinutes * 60 * 1000));
-      }
-    } catch (error) {
-      console.error('Session error:', error);
-      console.log('Waiting 15 minutes before retry...');
-      await new Promise(resolve => setTimeout(resolve, 15 * 60 * 1000));
     }
+  } finally {
+    await browser.close();
+    console.log('Browser closed, finished following all accounts.');
   }
-  console.log('Finished following all accounts.');
 }
 
 // Start the bot
