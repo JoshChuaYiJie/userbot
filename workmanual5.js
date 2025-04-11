@@ -8,11 +8,12 @@ puppeteerExtra.use(puppeteerExtraStealthPlugin());
 
 // File paths configuration
 const accountsFilePath = path.join(__dirname, 'accounts_to_follow.txt');
-const followedFilePath = '/app/followed.txt'; // Persistent volume path in container
+const followedFilePath = '/app/followed.txt';
 
 // Track followed accounts
 let followedAccounts = [];
 let accountsToProcess = [];
+const SESSION_ID = '6437903867%3AoFZ3u9GEJEQgCy%3A22%3AAYdOFOt2V1D747AGApJTu9NrL7rD8NEq7DwwFHbfVQ'; // Hardcoded sessionid
 
 // Helper function to get current hour in Singapore time
 function getSingaporeHour() {
@@ -29,8 +30,8 @@ function readAccountsFromFile(filePath) {
     }
     const ext = path.extname(filePath).toLowerCase();
     const content = fs.readFileSync(filePath, 'utf8');
-    if (ext === '.csv') return content.split(/[\r\n,]+/).filter(username => username.trim().length > 0);
-    else if (ext === '.txt') return content.split(/[\r\n]+/).filter(username => username.trim().length > 0);
+    if (ext === '.csv') return content.split(/[\r\n,]+/).filter(username => username.trim());
+    else if (ext === '.txt') return content.split(/[\r\n]+/).filter(username => username.trim());
     else if (ext === '.json') {
       const data = JSON.parse(content);
       if (Array.isArray(data)) return data.map(item => typeof item === 'string' ? item : item.username || item.user || '').filter(Boolean);
@@ -39,20 +40,20 @@ function readAccountsFromFile(filePath) {
         return Array.isArray(accounts) ? accounts : [];
       }
     }
-    return content.split(/[\r\n]+/).filter(username => username.trim().length > 0);
+    return content.split(/[\r\n]+/).filter(username => username.trim());
   } catch (error) {
     console.error(`Error reading accounts file: ${error.message}`);
     return [];
   }
 }
 
-// Load previously followed accounts from persistent file
+// Load previously followed accounts
 function loadFollowedAccounts() {
   try {
     if (fs.existsSync(followedFilePath)) {
       followedAccounts = fs.readFileSync(followedFilePath, 'utf8')
         .split('\n')
-        .filter(line => line.trim().length > 0)
+        .filter(line => line.trim())
         .map(line => line.split(',')[0]);
       console.log(`Loaded ${followedAccounts.length} previously followed accounts from ${followedFilePath}`);
     } else {
@@ -65,7 +66,7 @@ function loadFollowedAccounts() {
   }
 }
 
-// Save followed account to persistent file
+// Save followed account
 function saveFollowedAccount(username) {
   if (!followedAccounts.includes(username)) {
     followedAccounts.push(username);
@@ -107,8 +108,9 @@ async function humanLikeScroll(page) {
   });
 }
 
-// Start browser instance (single instance for the entire run)
+// Start browser instance (single instance)
 async function startBrowser() {
+  console.log('Starting browser...');
   const browser = await puppeteerExtra.launch({ 
     headless: true, 
     args: [
@@ -116,19 +118,20 @@ async function startBrowser() {
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
-      '--no-zygote', // Reduce thread usage
-      '--disable-crash-reporter', // Avoid posix_spawn issues
-      '--single-process', // Minimize resource footprint
+      '--no-zygote',
+      '--disable-crash-reporter',
+      '--single-process',
       '--window-size=1920,1080'
     ],
-    // Increase timeout and handle resource limits
     timeout: 60000
   });
+  console.log('Browser started successfully');
   return browser;
 }
 
-// Create a new page with session
+// Create a new page with sessionid
 async function createPage(browser) {
+  console.log('Creating new page...');
   const page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 800 });
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36');
@@ -143,7 +146,7 @@ async function createPage(browser) {
   });
   await page.setCookie({
     name: 'sessionid',
-    value: '72188432551%3AzfduWfv6Vyk6so%3A29%3AAYfYCL_ms5lZMVTrAXiSqtFmpNxcinRd-eTtWmKkjA',
+    value: SESSION_ID,
     domain: '.instagram.com',
     path: '/',
     secure: true,
@@ -151,6 +154,7 @@ async function createPage(browser) {
     sameSite: 'Lax',
     expires: -1
   });
+  console.log('Page created with sessionid');
   return page;
 }
 
@@ -224,8 +228,9 @@ async function runBot() {
   console.log(`Loaded ${accountsToFollow.length} accounts, ${accountsToProcess.length} new to follow`);
   let processedCount = 0;
 
-  const browser = await startBrowser();
+  let browser;
   try {
+    browser = await startBrowser();
     while (processedCount < accountsToProcess.length) {
       const hour = getSingaporeHour();
       if (hour >= 2 && hour < 5) {
@@ -234,20 +239,17 @@ async function runBot() {
         continue;
       }
       console.log(`Starting batch at index ${processedCount} (${new Date().toLocaleString('en-US', { timeZone: 'Asia/Singapore' })})`);
-      let page;
+      let page = await createPage(browser);
       try {
-        page = await createPage(browser);
         await page.goto('https://www.instagram.com/', { waitUntil: 'networkidle2', timeout: 30000 });
         const isLoggedIn = await page.evaluate(() => !!document.querySelector('a[href*="/accounts/"]'));
         if (!isLoggedIn) {
-          console.error('Session cookie invalid. Update sessionid.');
-          await page.close();
-          break; // Exit loop instead of returning to allow browser cleanup
+          console.error('Sessionid invalid. Please update SESSION_ID and redeploy.');
+          break;
         }
         console.log('Logged in successfully');
         const followedCount = await followAccountsBatch(page, processedCount, 20);
         processedCount += followedCount;
-        await page.close();
         if (processedCount % 50 === 0) {
           const updatedAccounts = readAccountsFromFile(accountsFilePath);
           const updatedToProcess = updatedAccounts.filter(account => !followedAccounts.includes(account));
@@ -260,6 +262,8 @@ async function runBot() {
             console.log(`Updated list: ${accountsToProcess.length - processedCount} to process`);
           }
         }
+        await page.close();
+        console.log('Page closed after batch');
         if (processedCount < accountsToProcess.length) {
           let baseWaitMinutes = 60;
           if (hour >= 22 || hour < 6) baseWaitMinutes = 90;
@@ -269,14 +273,16 @@ async function runBot() {
           await new Promise(resolve => setTimeout(resolve, waitTimeMinutes * 60 * 1000));
         }
       } catch (error) {
-        console.error('Session error:', error.message);
-        console.log('Waiting 15 minutes before retry...');
-        if (page) await page.close();
+        console.error('Batch error:', error.message);
+        console.log('Waiting 15 minutes before retrying batch...');
+        if (!page.isClosed()) await page.close();
         await new Promise(resolve => setTimeout(resolve, 15 * 60 * 1000));
       }
     }
+  } catch (error) {
+    console.error('Run error:', error.message);
   } finally {
-    await browser.close();
+    if (browser) await browser.close();
     console.log('Browser closed, finished following all accounts.');
   }
 }
