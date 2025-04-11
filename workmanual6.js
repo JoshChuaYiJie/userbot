@@ -204,15 +204,20 @@ async function loginToInstagram(browser) {
   console.log('Navigating to Instagram login page...');
   await page.goto('https://www.instagram.com/accounts/login/', { waitUntil: 'networkidle2', timeout: 30000 });
 
-  await page.waitForSelector('input[name="username"]', { timeout: 10000 });
-  await page.type('input[name="username"]', process.env.INSTAGRAM_USERNAME, { delay: getRandomWaitTime(50, 150) });
-  await page.type('input[name="password"]', process.env.INSTAGRAM_PASSWORD, { delay: getRandomWaitTime(50, 150) });
+  // Use aria-label selectors from your input
+  await page.waitForSelector('input[aria-label="Phone number, username, or email"]', { timeout: 10000 });
+  await page.type('input[aria-label="Phone number, username, or email"]', process.env.INSTAGRAM_USERNAME, { delay: getRandomWaitTime(50, 150) });
+  await page.type('input[aria-label="Password"]', process.env.INSTAGRAM_PASSWORD, { delay: getRandomWaitTime(50, 150) });
   
   console.log('Submitting login form...');
-  await Promise.all([
-    page.click('button[type="submit"]'),
-    page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 })
-  ]);
+  // Assuming the button is inside or is the div with class x9f619
+  await page.waitForSelector('div.x9f619', { timeout: 10000 });
+  await page.evaluate(() => {
+    const loginDiv = document.querySelector('div.x9f619');
+    const loginButton = loginDiv.querySelector('button') || loginDiv;
+    if (loginButton) loginButton.click();
+  });
+  await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
 
   const cookies = await page.cookies();
   const sessionCookie = cookies.find(cookie => cookie.name === 'sessionid');
