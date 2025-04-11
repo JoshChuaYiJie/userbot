@@ -10,16 +10,47 @@ puppeteerExtra.use(puppeteerExtraStealthPlugin());
 // File paths configuration
 const accountsFilePath = path.join(__dirname, 'accounts_to_follow.txt');
 const followedFilePath = '/app/followed.txt'; // Persistent volume path in container
+const sessionFilePath = '/app/session.txt'; // Persistent sessionid storage
 
 // Track followed accounts and session
 let followedAccounts = [];
 let accountsToProcess = [];
-let currentSessionId = '72188432551%3AzfduWfv6Vyk6so%3A29%3AAYfYCL_ms5lZMVTrAXiSqtFmpNxcinRd-eTtWmKkjA'; // Initial hardcoded sessionid
+let currentSessionId = '72188432551%3AzfduWfv6Vyk6so%3A29%3AAYfYCL_ms5lZMVTrAXiSqtFmpNxcinRd-eTtWmKkjA'; // Fallback hardcoded sessionid
 
 // Helper function to get current hour in Singapore time
 function getSingaporeHour() {
   const options = { timeZone: 'Asia/Singapore', hour: 'numeric', hour12: false };
   return parseInt(new Date().toLocaleString('en-US', options), 10);
+}
+
+// Load sessionid from file if it exists
+function loadSessionId() {
+  try {
+    if (fs.existsSync(sessionFilePath)) {
+      const sessionId = fs.readFileSync(sessionFilePath, 'utf8').trim();
+      if (sessionId) {
+        currentSessionId = sessionId;
+        console.log(`Loaded sessionid from ${sessionFilePath}: ${currentSessionId}`);
+      }
+    } else {
+      console.log(`No session.txt found at ${sessionFilePath}, using hardcoded sessionid`);
+      fs.writeFileSync(sessionFilePath, currentSessionId);
+    }
+  } catch (error) {
+    console.error(`Error loading sessionid: ${error.message}`);
+    fs.writeFileSync(sessionFilePath, currentSessionId);
+  }
+}
+
+// Save new sessionid to file
+function saveSessionId(sessionId) {
+  try {
+    fs.writeFileSync(sessionFilePath, sessionId);
+    console.log(`Saved new sessionid to ${sessionFilePath}: ${sessionId}`);
+    currentSessionId = sessionId;
+  } catch (error) {
+    console.error(`Error saving sessionid: ${error.message}`);
+  }
 }
 
 // Read accounts from file
@@ -190,6 +221,7 @@ async function loginToInstagram(browser) {
     throw new Error('Login failed, no sessionid found. Check credentials or 2FA.');
   }
   console.log(`New sessionid obtained: ${sessionCookie.value}`);
+  saveSessionId(sessionCookie.value); // Save to file
   await page.close();
   return sessionCookie.value;
 }
@@ -254,6 +286,7 @@ async function followAccountsBatch(page, startIndex, maxBatchSize) {
 
 // Main bot function
 async function runBot() {
+  loadSessionId(); // Load sessionid from file if exists
   loadFollowedAccounts();
   const accountsToFollow = readAccountsFromFile(accountsFilePath);
   accountsToProcess = accountsToFollow.filter(account => !followedAccounts.includes(account));
@@ -317,9 +350,8 @@ async function runBot() {
         }
       } catch (error) {
         console.error('Session error:', error.message);
-        console.log('Waiting 15 minutes before retry...');
+        console.log('Retrying with new page...');
         if (page) await page.close();
-        await new Promise(resolve => setTimeout(resolve, 15 * 60 * 1000));
       }
     }
   } finally {
