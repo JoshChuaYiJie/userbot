@@ -416,7 +416,7 @@ async function runBot() {
 
   // Start unfollow process
   console.log('Starting unfollow process...');
-  const accountsToUnfollow = followedAccounts.filter(account => !accountsToUnfollow.includes(account));
+  const accountsToUnfollow = readAccountsFromFile(accountsFilePath);
   if (accountsToUnfollow.length === 0) {
     console.log('No accounts to unfollow.');
     return;
