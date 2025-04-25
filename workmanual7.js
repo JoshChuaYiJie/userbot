@@ -15,7 +15,7 @@ const alreadyFollowedFilePath = '/app/alreadyfollowed.txt';
 let followedAccounts = [];
 let alreadyFollowedAccounts = [];
 let accountsToProcess = [];
-const SESSION_ID = '6437903867%3AoFZ3u9GEJEQgCy%3A22%3AAYdOFOt2V1D747AGApJTu9NrL7rD8NEq7DwwFHbfVQ'; // Hardcoded sessionid
+const SESSION_ID = '6437903867%3AxJbOClqBW12OjY%3A25%3AAYfoi8yX3jcCsnOjquTiXEWs9wT-_WKKTXQpvTBArFQ'; // Hardcoded sessionid
 
 // Helper function to get current hour in Singapore time
 function getSingaporeHour() {
