@@ -129,7 +129,7 @@ async function humanLikeScroll(page) {
 async function startBrowserSession() {
   try {
     console.log('Starting Browserless session...');
-    const token = 'ty9M67Qb7jT4OJ0RVMqXwTdGubGsDQ8d';
+    const token = '//fill in yourself';
     const endpoint = 'ws://browserless.139.180.128.204.sslip.io:3000?token=' + token;
     console.log('Connecting to:', endpoint);
     const browser = await puppeteer.connect({ browserWSEndpoint: endpoint });
